@@ -23,12 +23,14 @@ interface FormInputs {
   remark: string;
   // Virtual file fields for handling upload
   playerImageFiles: FileList;
+  validDocumentFiles: FileList;
   paymentScreenshotFiles?: FileList;
 }
 
 const API_BASE = '/api'; // Use relative path via Vite proxy
 
 const Register: React.FC = () => {
+  const [showWelcome, setShowWelcome] = useState(true);
   const [step, setStep] = useState<1 | 2>(1);
   const [registeredPlayerId, setRegisteredPlayerId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,7 +75,7 @@ const Register: React.FC = () => {
 
   const onStep1Submit = async () => {
     // 1. Validate Fields
-    const isValid = await trigger(['name', 'mobile', 'email', 'dob', 'age', 'adhar', 'category', 'playerImageFiles']);
+    const isValid = await trigger(['name', 'mobile', 'email', 'dob', 'age', 'adhar', 'category', 'playerImageFiles', 'validDocumentFiles']);
     
     if (!isValid) {
         setSubmitStatus('error');
@@ -90,18 +92,29 @@ const Register: React.FC = () => {
 
     try {
         const data = watch();
-        // 2. Upload Player Image
+        // 2. Upload Player Image & Document
         if (!data.playerImageFiles || data.playerImageFiles.length === 0) {
             throw new Error("Player image is required");
+        }
+        if (!data.validDocumentFiles || data.validDocumentFiles.length === 0) {
+            throw new Error("Valid Document is required");
         }
         
         // Basic file size check (5MB)
         if (data.playerImageFiles[0].size > 5 * 1024 * 1024) {
             throw new Error("Image size too large. Max 5MB allowed.");
         }
+        if (data.validDocumentFiles[0].size > 5 * 1024 * 1024) {
+            throw new Error("Document size too large. Max 5MB allowed.");
+        }
 
-        const playerImageUrl = await uploadFile(data.playerImageFiles[0]);
-        setUploadProgress(40);
+        // Upload concurrently
+        const [playerImageUrl, validDocumentUrl] = await Promise.all([
+            uploadFile(data.playerImageFiles[0]),
+            uploadFile(data.validDocumentFiles[0])
+        ]);
+
+        setUploadProgress(50);
 
         // 3. Create Player Record
         const payload = {
@@ -113,6 +126,7 @@ const Register: React.FC = () => {
             adhar: data.adhar,
             category: data.category,
             playerImageUrl,
+            validDocumentUrl,
             paymentStatus: false // Default to false initially
         };
 
@@ -143,15 +157,17 @@ const Register: React.FC = () => {
     setUploadProgress(10);
 
     try {
-        // 1. Upload Payment Screenshot (if exists)
-        let paymentScreenshotUrl = '';
-        if (data.paymentScreenshotFiles && data.paymentScreenshotFiles.length > 0) {
-            // Check size (10MB)
-             if (data.paymentScreenshotFiles[0].size > 10 * 1024 * 1024) {
-                throw new Error("Screenshot too large. Max 10MB allowed.");
-            }
-            paymentScreenshotUrl = await uploadFile(data.paymentScreenshotFiles[0]);
+        // 1. Upload Payment Screenshot (Mandatory now)
+        if (!data.paymentScreenshotFiles || data.paymentScreenshotFiles.length === 0) {
+            throw new Error("Payment Screenshot is required.");
         }
+        
+        // Check size (10MB)
+        if (data.paymentScreenshotFiles[0].size > 10 * 1024 * 1024) {
+            throw new Error("Screenshot too large. Max 10MB allowed.");
+        }
+
+        const paymentScreenshotUrl = await uploadFile(data.paymentScreenshotFiles[0]);
         setUploadProgress(60);
 
         // 2. Update Record
@@ -180,6 +196,7 @@ const Register: React.FC = () => {
     }
   };
 
+  // --- VIEW: SUCCESS ---
   if (submitStatus === 'success') {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center animate-fade-in bg-ublDark relative overflow-hidden">
@@ -204,6 +221,44 @@ const Register: React.FC = () => {
     );
   }
 
+  // --- VIEW: WELCOME LANDING ---
+  if (showWelcome) {
+    return (
+        <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center animate-fade-in bg-ublDark relative overflow-hidden">
+            {/* Background */}
+            <div 
+                className="absolute inset-0 bg-cover bg-center z-0 opacity-40 mix-blend-overlay"
+                style={{ backgroundImage: `url(${BG_URL})` }}
+            ></div>
+            <div className="absolute inset-0 bg-gradient-to-t from-ublDark via-ublDark/90 to-blue-900/50"></div>
+            
+            {/* Content */}
+            <div className="z-10 flex flex-col items-center max-w-2xl w-full animate-in slide-in-from-bottom-10 fade-in duration-1000">
+                <div className="relative mb-10 group">
+                     <div className="absolute inset-0 bg-ublCyan/30 rounded-full blur-3xl opacity-50 animate-pulse"></div>
+                     <img src={LOGO_URL} alt="Logo" className="w-48 h-48 md:w-64 md:h-64 object-contain relative z-10 drop-shadow-[0_0_20px_rgba(34,211,238,0.8)]" />
+                </div>
+                
+                <h1 className="text-6xl md:text-8xl font-black italic tracking-tighter text-white drop-shadow-[0_0_15px_rgba(34,211,238,0.6)] mb-2 leading-none">
+                    UNITED <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-ublCyan to-white">BADMINTON</span> <br/> LEAGUE
+                </h1>
+                
+                <p className="text-gray-300 text-lg md:text-xl font-bold uppercase tracking-[0.2em] mb-12 mt-6">
+                    Official Player Registration Portal
+                </p>
+                
+                <button 
+                    onClick={() => setShowWelcome(false)} 
+                    className="w-full md:w-auto px-16 py-6 bg-gradient-to-r from-ublCyan to-blue-500 text-black font-black uppercase text-xl md:text-2xl tracking-widest rounded-full shadow-[0_0_40px_rgba(6,182,212,0.5)] hover:shadow-[0_0_60px_rgba(6,182,212,0.8)] hover:scale-105 hover:bg-white transition-all duration-300"
+                >
+                    Start Registration
+                </button>
+            </div>
+        </div>
+    );
+  }
+
+  // --- VIEW: FORM ---
   return (
     <div className="min-h-screen flex justify-center items-start py-10 px-4 relative bg-ublDark selection:bg-ublCyan selection:text-black overflow-x-hidden">
       
@@ -233,7 +288,7 @@ const Register: React.FC = () => {
       </div>
       {/* --- CRAZY BACKGROUND END --- */}
 
-      <div className="w-full max-w-5xl bg-black/60 backdrop-blur-xl border border-white/10 rounded-3xl shadow-[0_0_60px_rgba(6,182,212,0.2)] overflow-hidden relative z-10">
+      <div className="w-full max-w-5xl bg-black/60 backdrop-blur-xl border border-white/10 rounded-3xl shadow-[0_0_60px_rgba(6,182,212,0.2)] overflow-hidden relative z-10 animate-in zoom-in-95 duration-500">
         
         <div className="relative">
             {/* Top accent bar */}
@@ -243,20 +298,14 @@ const Register: React.FC = () => {
             
             {/* Header Section */}
             <div className="flex flex-col items-center mb-10 text-center relative">
-                {/* Huge Glowing Logo */}
-                <div className="relative mb-6 group cursor-pointer">
-                    <div className="absolute inset-0 bg-ublCyan/30 rounded-full blur-3xl opacity-50 group-hover:opacity-80 transition-opacity duration-500"></div>
-                    <img 
-                        src={LOGO_URL} 
-                        alt="UBL Logo" 
-                        className="w-40 h-40 md:w-56 md:h-56 object-contain relative z-10 drop-shadow-[0_0_15px_rgba(6,182,212,0.8)] transform group-hover:scale-110 transition-transform duration-500 ease-out" 
-                    />
+                {/* Small Header Logo */}
+                <div className="relative mb-6 cursor-pointer" onClick={() => setShowWelcome(true)}>
+                    <img src={LOGO_URL} alt="UBL Logo" className="w-20 h-20 object-contain drop-shadow-[0_0_10px_rgba(6,182,212,0.8)]" />
                 </div>
                 
-                <h1 className="text-5xl md:text-7xl font-black italic tracking-tighter text-white drop-shadow-[0_0_10px_rgba(34,211,238,0.5)] mb-2">
-                UNITED <span className="text-transparent bg-clip-text bg-gradient-to-r from-ublCyan to-white">BADMINTON</span> LEAGUE
+                <h1 className="text-3xl md:text-5xl font-black italic tracking-tighter text-white mb-2">
+                PLAYER REGISTRATION
                 </h1>
-                <p className="text-gray-400 uppercase tracking-[0.3em] text-sm md:text-base font-bold">Official Player Registration</p>
                 
                 {/* Stepper */}
                 <div className="flex items-center space-x-4 mt-8 bg-black/40 px-6 py-2 rounded-full border border-white/5">
@@ -406,6 +455,20 @@ const Register: React.FC = () => {
                     {errors.category && <p className="text-red-400 text-xs mt-2 font-bold text-center uppercase">{errors.category.message}</p>}
                     </div>
 
+                    {/* Valid Document Upload - NEW */}
+                    <div className="md:col-span-2">
+                        <label className="block text-xs font-black text-ublCyan uppercase mb-2 tracking-widest pl-1">Valid ID Proof (Aadhar/DL/Passport) <span className="text-red-500">*</span></label>
+                        <div className="bg-slate-900/50 border border-gray-700 rounded-xl p-4 flex items-center gap-4">
+                            <input 
+                                type="file" 
+                                accept="image/png, image/jpeg, image/jpg, application/pdf"
+                                {...register("validDocumentFiles", { required: "ID Proof is required" })}
+                                className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:uppercase file:bg-gray-800 file:text-white hover:file:bg-ublCyan hover:file:text-black transition-all cursor-pointer"
+                            />
+                        </div>
+                        {errors.validDocumentFiles && <p className="text-red-400 text-xs mt-2 font-bold ml-1">{errors.validDocumentFiles.message}</p>}
+                    </div>
+
                     {/* Player Image */}
                     <div className="md:col-span-2">
                         <label className="block text-xs font-black text-ublCyan uppercase mb-2 tracking-widest pl-1">Player Photo <span className="text-red-500">*</span></label>
@@ -503,23 +566,25 @@ const Register: React.FC = () => {
                         
                         <div className="grid grid-cols-1 gap-6">
                             <div>
-                                <label className="block text-xs font-bold text-gray-300 uppercase mb-2">Transaction Ref / Barcode No.</label>
+                                <label className="block text-xs font-bold text-gray-300 uppercase mb-2">Transaction Ref / Barcode No. <span className="text-red-500">*</span></label>
                                 <input 
-                                    {...register("upiOrBarcode")}
+                                    {...register("upiOrBarcode", { required: "Transaction ID is required" })}
                                     className="w-full bg-black/50 border border-gray-600 focus:border-ublCyan rounded-xl px-4 py-4 text-white outline-none"
                                     placeholder="e.g. UPI Ref Number"
                                 />
+                                {errors.upiOrBarcode && <p className="text-red-400 text-xs mt-2 font-bold ml-1">{errors.upiOrBarcode.message}</p>}
                             </div>
                             
                             {/* Payment Screenshot */}
                             <div>
-                                <label className="block text-xs font-bold text-gray-300 uppercase mb-2">Upload Screenshot</label>
+                                <label className="block text-xs font-bold text-gray-300 uppercase mb-2">Upload Screenshot <span className="text-red-500">*</span></label>
                                 <input 
                                     type="file" 
                                     accept="image/png, image/jpeg, image/jpg, application/pdf"
-                                    {...register("paymentScreenshotFiles")}
+                                    {...register("paymentScreenshotFiles", { required: "Payment screenshot is required" })}
                                     className="w-full text-sm text-gray-400 file:mr-4 file:py-3 file:px-6 file:rounded-full file:border-0 file:text-xs file:font-black file:uppercase file:bg-ublCyan file:text-black hover:file:bg-white transition-colors cursor-pointer"
                                 />
+                                {errors.paymentScreenshotFiles && <p className="text-red-400 text-xs mt-2 font-bold ml-1">{errors.paymentScreenshotFiles.message}</p>}
                             </div>
                         </div>
                     </div>

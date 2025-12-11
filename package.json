@@ -2,12 +2,12 @@
   "name": "ubl-portal",
   "version": "1.0.0",
   "scripts": {
-    "server": "ts-node-dev --respawn --transpile-only server/index.ts",
+    "server": "ts-node-dev -r dotenv/config --respawn --transpile-only server/index.ts",
     "client": "cd client && npm run dev",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "seed": "ts-node server/seed.ts",
+    "seed": "ts-node -r dotenv/config server/seed.ts",
     "build": "npm install && cd client && npm install && npm run build",
-    "start": "ts-node server/index.ts"
+    "start": "ts-node -r dotenv/config server/index.ts"
   },
   "dependencies": {
     "cloudinary": "^1.41.0",

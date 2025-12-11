@@ -9,28 +9,22 @@ const router = express.Router();
 
 // --- Configuration ---
 
-// Cloudinary Config (or fallback to memory for demo purposes if keys missing)
-const useCloudinary = process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY;
+// Configure Cloudinary (Keys should be loaded via dotenv)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-if (useCloudinary) {
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-  });
-}
-
-// Multer Storage
-const storage = useCloudinary 
-  ? new CloudinaryStorage({
-      cloudinary: cloudinary,
-      params: async (req, file) => ({
-        folder: 'ubl_players',
-        format: file.mimetype.split('/')[1], // jpeg, png
-        public_id: `${Date.now()}-${file.originalname.split('.')[0]}`,
-      }),
-    })
-  : multer.memoryStorage(); // Fallback for dev without Cloudinary credentials
+// Multer Storage Configuration (Cloudinary Only)
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: async (req, file) => ({
+    folder: 'ubl_players',
+    format: file.mimetype.split('/')[1], // jpeg, png, pdf
+    public_id: `${Date.now()}-${file.originalname.split('.')[0]}`,
+  }),
+});
 
 const upload = multer({ 
   storage: storage,
@@ -57,22 +51,16 @@ const createLimiter = rateLimit({
 
 /**
  * @route POST /api/uploads
- * @desc Upload image to Cloudinary (or mock) and return URL
+ * @desc Upload image to Cloudinary and return URL
  */
 router.post('/uploads', upload.single('file') as any, async (req: any, res: any) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    // If using Cloudinary storage, path is in req.file.path
-    if (useCloudinary) {
-      return res.json({ url: (req.file as any).path });
-    } else {
-      // Mock response for local dev without Cloudinary
-      // In a real local-fs scenario, you'd serve this statically
-      return res.json({ url: `https://picsum.photos/seed/${Date.now()}/400/400` });
-    }
+    // Cloudinary returns the URL in req.file.path
+    return res.json({ url: (req.file as any).path });
   } catch (err) {
-    console.error(err);
+    console.error("Upload error:", err);
     res.status(500).json({ error: 'Upload failed' });
   }
 });

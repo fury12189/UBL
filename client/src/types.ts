@@ -2,6 +2,7 @@ export interface Player {
     _id?: string;
     name: string;
     playerImageUrl: string;
+    validDocumentUrl: string;
     email?: string;
     mobile: string;
     dob: string;

@@ -3,6 +3,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 export interface IPlayer extends Document {
   name: string;
   playerImageUrl: string;
+  validDocumentUrl: string; // New mandatory field
   email?: string;
   mobile: string;
   dob: Date;
@@ -22,6 +23,7 @@ export interface IPlayer extends Document {
 const PlayerSchema: Schema = new Schema({
   name: { type: String, required: true, trim: true },
   playerImageUrl: { type: String, required: true },
+  validDocumentUrl: { type: String, required: true }, // Required in DB
   email: { type: String, trim: true, lowercase: true },
   mobile: { type: String, required: true, index: true },
   dob: { type: Date, required: true },
@@ -32,7 +34,7 @@ const PlayerSchema: Schema = new Schema({
     required: true, 
     enum: ['20-30', '35+', '40+', '45+', '50+', '55+'] 
   },
-  upiOrBarcode: { type: String },
+  upiOrBarcode: { type: String }, // Made mandatory via API validation/Frontend, kept loose here for flexibility
   paymentScreenshotUrl: { type: String },
   paymentStatus: { type: Boolean, default: false, index: true },
   achievements: { type: String, maxlength: 1000 },
