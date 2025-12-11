@@ -2,6 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import playerRoutes from './routes/players';
 
 dotenv.config();
@@ -19,12 +20,17 @@ mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch((err) => console.error('❌ MongoDB Connection Error:', err));
 
-// Routes
+// API Routes
 app.use('/api', playerRoutes);
 
-// Health Check
-app.get('/', (req, res) => {
-  res.send('United Badminton League API is running.');
+// --- Serve Static Frontend (Production) ---
+const clientDistPath = path.join(__dirname, '../client/dist');
+app.use(express.static(clientDistPath) as any);
+
+// Catch-all handler: For any request that doesn't match an API route,
+// send back the React index.html file.
+app.get('*', (req, res) => {
+  res.sendFile(path.join(clientDistPath, 'index.html'));
 });
 
 app.listen(PORT, () => {
