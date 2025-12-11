@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/assets/logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>United Badminton League</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+          theme: {
+            extend: {
+              colors: {
+                ublDark: '#020617', // slate-950
+                ublNavy: '#0f172a', // slate-900
+                ublCyan: '#06b6d4', // cyan-500
+                ublCyanGlow: '#22d3ee', // cyan-400
+              },
+              fontFamily: {
+                sans: ['Inter', 'sans-serif'],
+              },
+              animation: {
+                  'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                  'shine': 'shine 1s infinite',
+              },
+              keyframes: {
+                  shine: {
+                      '100%': { left: '125%' },
+                  }
+              }
+            }
+          }
+        }
+    </script>
+    <style>
+      body {
+        background-color: #020617;
+        color: white;
+        font-family: 'Inter', sans-serif;
+      }
+      .neon-glow {
+        box-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+      }
+      .neon-text {
+        text-shadow: 0 0 5px rgba(34, 211, 238, 0.8);
+      }
+      
+      @keyframes background-pan {
+        from {
+          background-position: 0% 0%;
+        }
+        to {
+          background-position: 0% 100%;
+        }
+      }
+
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #0f172a; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #06b6d4; 
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,5 @@
+{
+  "name": "United Badminton League Registration",
+  "description": "A comprehensive MERN stack application for managing badminton league registrations, including a public neon-themed form and a robust admin dashboard.",
+  "requestFramePermissions": []
+}
