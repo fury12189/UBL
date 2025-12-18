@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Player, CATEGORIES } from '../types';
 
-const API_BASE = '/api'; // Use relative path via Vite proxy
+const API_BASE = '/api';
 
 const Admin: React.FC = () => {
   const [token, setToken] = useState<string>('');
@@ -11,7 +11,6 @@ const Admin: React.FC = () => {
   const [stats, setStats] = useState({ total: 0, paid: 0, unpaid: 0 });
   const [loading, setLoading] = useState(false);
   
-  // Modal State
   const [modalConfig, setModalConfig] = useState<{
     isOpen: boolean;
     type: 'PAYMENT' | 'DELETE' | 'PROFILE' | null;
@@ -27,7 +26,6 @@ const Admin: React.FC = () => {
     message: ''
   });
   
-  // Filters
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState('');
@@ -60,11 +58,9 @@ const Admin: React.FC = () => {
       setTotalPages(res.data.totalPages);
       setStats(res.data.stats);
     } catch (err) {
-      console.error(err);
       if (axios.isAxiosError(err) && err.response?.status === 401) {
         setIsAuthenticated(false);
-        setToken(''); // clear invalid token
-        alert("Session expired or invalid token");
+        setToken('');
       }
     } finally {
       setLoading(false);
@@ -77,23 +73,15 @@ const Admin: React.FC = () => {
     setToken(inputToken);
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPage(1);
-    fetchData();
-  };
-
   const openPaymentModal = (id: string, currentStatus: boolean, name: string) => {
-    // Should generally not be called if status is true due to button hiding, but safety check:
-    if (currentStatus) return;
-
+    if (currentStatus) return; // Cannot un-pay
     setModalConfig({
         isOpen: true,
         type: 'PAYMENT',
         itemId: id,
         itemData: currentStatus,
         title: 'Confirm Payment',
-        message: `Mark ${name} as PAID? This action cannot be undone.`
+        message: `Verify ${name}'s payment. This will mark them as PAID permanently.`
     });
   };
 
@@ -102,8 +90,8 @@ const Admin: React.FC = () => {
         isOpen: true,
         type: 'DELETE',
         itemId: id,
-        title: 'Confirm Deletion',
-        message: `Are you sure you want to PERMANENTLY delete ${name}? This action cannot be undone.`
+        title: 'Delete Record',
+        message: `Permanently delete ${name}? This action is irreversible.`
     });
   };
 
@@ -120,364 +108,302 @@ const Admin: React.FC = () => {
 
   const handleConfirmAction = async () => {
     if (!modalConfig.itemId) return;
-
     try {
         if (modalConfig.type === 'PAYMENT') {
-             // Only allow marking as TRUE (Paid)
              await axios.put(`${API_BASE}/players/${modalConfig.itemId}`, 
                 { paymentStatus: true }, 
                 { headers: { 'x-admin-token': token } }
             );
-            setModalConfig({ ...modalConfig, isOpen: false });
-            fetchData();
         } else if (modalConfig.type === 'DELETE') {
              await axios.delete(`${API_BASE}/players/${modalConfig.itemId}`, {
                 headers: { 'x-admin-token': token }
             });
-            setModalConfig({ ...modalConfig, isOpen: false });
-            fetchData();
         }
+        setModalConfig({ ...modalConfig, isOpen: false });
+        fetchData();
     } catch (err) {
-        alert("Action failed. Please check your network or token.");
+        alert("Action failed.");
     }
   };
 
   if (!isAuthenticated) {
     return (
         <div className="min-h-screen flex items-center justify-center bg-ublDark">
-            <form onSubmit={handleLogin} className="bg-slate-800 p-8 rounded-lg shadow-2xl border border-gray-700 w-full max-w-md">
-                <h2 className="text-3xl text-ublCyan font-black mb-6 text-center italic tracking-wider">ADMIN PORTAL</h2>
-                <label className="block text-gray-400 text-xs font-bold uppercase mb-2">Secret Access Token</label>
-                <input 
-                    id="tokenInput"
-                    type="password" 
-                    placeholder="Enter Token"
-                    className="w-full bg-slate-900 border border-gray-600 rounded px-4 py-3 text-white mb-6 outline-none focus:border-ublCyan focus:shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all"
-                />
-                <button className="w-full bg-ublCyan text-black font-black uppercase tracking-widest py-3 rounded hover:bg-white hover:shadow-[0_0_20px_rgba(34,211,238,1)] transition-all">
-                    Access Dashboard
-                </button>
+            <form onSubmit={handleLogin} className="bg-slate-900 p-10 rounded-3xl shadow-2xl border border-white/5 w-full max-w-md">
+                <h2 className="text-4xl text-ublCyan font-black mb-8 text-center italic tracking-wider uppercase">Admin Login</h2>
+                <div className="space-y-4">
+                    <input 
+                        id="tokenInput"
+                        type="password" 
+                        placeholder="ADMIN SECRET TOKEN"
+                        className="w-full bg-black/40 border border-gray-800 rounded-2xl px-5 py-5 text-white outline-none focus:border-ublCyan transition-all text-center tracking-widest"
+                    />
+                    <button className="w-full bg-ublCyan text-black font-black uppercase tracking-widest py-5 rounded-2xl hover:bg-white hover:shadow-[0_0_30px_rgba(34,211,238,0.5)] transition-all">
+                        Access Dashboard
+                    </button>
+                </div>
             </form>
         </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-ublDark p-4 md:p-8 relative">
-      {/* Top Stats Bar */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        <div className="bg-slate-800 p-4 rounded border border-gray-700">
-            <h3 className="text-gray-400 text-xs uppercase font-bold">Total Entries</h3>
-            <p className="text-3xl font-bold text-white">{stats.total}</p>
+    <div className="min-h-screen bg-ublDark p-4 md:p-10">
+      {/* Header Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-10">
+        <div className="bg-slate-900 p-8 rounded-3xl border border-white/5 group hover:border-ublCyan/30 transition-all">
+            <p className="text-gray-500 text-xs font-black uppercase tracking-widest mb-2">Total Players</p>
+            <p className="text-5xl font-black text-white italic">{stats.total}</p>
         </div>
-        <div className="bg-green-900/30 p-4 rounded border border-green-500/30">
-            <h3 className="text-green-400 text-xs uppercase font-bold">Paid</h3>
-            <p className="text-3xl font-bold text-green-400">{stats.paid}</p>
+        <div className="bg-emerald-950/20 p-8 rounded-3xl border border-emerald-500/20 group hover:border-emerald-500/50 transition-all">
+            <p className="text-emerald-500 text-xs font-black uppercase tracking-widest mb-2">Verified (Paid)</p>
+            <p className="text-5xl font-black text-emerald-400 italic">{stats.paid}</p>
         </div>
-        <div className="bg-red-900/30 p-4 rounded border border-red-500/30 cursor-pointer hover:bg-red-900/50" onClick={() => setPaymentStatus('false')}>
-            <h3 className="text-red-400 text-xs uppercase font-bold">Unpaid (Click to filter)</h3>
-            <p className="text-3xl font-bold text-red-400">{stats.unpaid}</p>
-        </div>
-      </div>
-
-      {/* Controls */}
-      <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 bg-slate-800/50 p-4 rounded-lg">
-        <form onSubmit={handleSearch} className="flex w-full md:w-auto">
-            <input 
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search name, mobile..." 
-                className="bg-slate-900 border border-gray-600 rounded-l px-4 py-2 text-white outline-none focus:border-ublCyan w-full md:w-64"
-            />
-            <button className="bg-slate-700 px-4 rounded-r hover:bg-slate-600">🔍</button>
-        </form>
-
-        <div className="flex flex-wrap gap-2 w-full md:w-auto">
-            <select value={category} onChange={e => setCategory(e.target.value)} className="bg-slate-900 border border-gray-600 text-white rounded px-3 py-2 text-sm outline-none">
-                <option value="">All Categories</option>
-                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-
-            <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)} className="bg-slate-900 border border-gray-600 text-white rounded px-3 py-2 text-sm outline-none">
-                <option value="">All Payment Status</option>
-                <option value="true">Paid</option>
-                <option value="false">Unpaid</option>
-            </select>
-
-            <select value={sort} onChange={e => setSort(e.target.value)} className="bg-slate-900 border border-gray-600 text-white rounded px-3 py-2 text-sm outline-none">
-                <option value="createdAt:desc">Newest First</option>
-                <option value="createdAt:asc">Oldest First</option>
-                <option value="name:asc">Name A-Z</option>
-            </select>
-            
-            <button onClick={() => {setSearch(''); setCategory(''); setPaymentStatus(''); setPage(1); fetchData()}} className="text-ublCyan text-sm font-bold px-3 py-2 hover:underline">Reset</button>
+        <div className="bg-rose-950/20 p-8 rounded-3xl border border-rose-500/20 group hover:border-rose-500/50 transition-all">
+            <p className="text-rose-500 text-xs font-black uppercase tracking-widest mb-2">Pending (Unpaid)</p>
+            <p className="text-5xl font-black text-rose-400 italic">{stats.unpaid}</p>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto bg-slate-800 rounded-lg shadow-xl border border-gray-700">
-        <table className="w-full text-left text-sm text-gray-300">
-            <thead className="bg-slate-900 text-gray-400 uppercase text-xs font-bold">
-                <tr>
-                    <th className="p-4">Registered At</th>
-                    <th className="p-4">Player Profile</th>
-                    <th className="p-4">Documents</th>
-                    <th className="p-4">Category</th>
-                    <th className="p-4">Payment & Ref</th>
-                    <th className="p-4">Actions</th>
-                </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-700">
-                {loading ? (
-                    <tr><td colSpan={6} className="p-8 text-center">Loading...</td></tr>
-                ) : players.length === 0 ? (
-                    <tr><td colSpan={6} className="p-8 text-center text-gray-500">No records found.</td></tr>
-                ) : (
-                    players.map(player => (
-                        <tr key={player._id} className="hover:bg-slate-700/50 transition-colors">
-                            <td className="p-4 whitespace-nowrap text-xs text-gray-400 font-mono">
-                                {player.createdAt ? new Date(player.createdAt).toLocaleString() : 'N/A'}
-                            </td>
-                            <td className="p-4">
-                                <div className="flex items-center space-x-3 min-w-[200px]">
-                                    <div className="relative group cursor-pointer" onClick={() => openProfileModal(player)}>
-                                        <img src={player.playerImageUrl} alt={player.name} className="w-10 h-10 rounded-full object-cover border border-gray-600 group-hover:border-ublCyan transition-colors" />
-                                    </div>
-                                    <div>
-                                        <div className="font-bold text-white hover:text-ublCyan cursor-pointer" onClick={() => openProfileModal(player)}>{player.name}</div>
-                                        <div className="text-xs text-gray-500">{player.email}</div>
-                                        <div className="text-xs text-gray-500">Mob: {player.mobile}</div>
-                                        <div className="text-xs text-gray-500">Age: {player.age}</div>
-                                    </div>
-                                </div>
-                            </td>
-                            <td className="p-4 space-y-2">
-                                <a 
-                                    href={player.validDocumentUrl} 
-                                    target="_blank" 
-                                    rel="noreferrer"
-                                    className="inline-flex items-center space-x-1 px-3 py-1 bg-slate-700 hover:bg-ublCyan hover:text-black rounded text-xs font-bold transition-all w-full justify-center"
-                                >
-                                    <span>📄 View ID Proof</span>
-                                </a>
-                                {player.paymentScreenshotUrl ? (
-                                    <a 
-                                        href={player.paymentScreenshotUrl} 
-                                        target="_blank" 
-                                        rel="noreferrer"
-                                        className="inline-flex items-center space-x-1 px-3 py-1 bg-slate-700 hover:bg-green-500 hover:text-black rounded text-xs font-bold transition-all w-full justify-center"
-                                    >
-                                        <span>💸 Payment Rec.</span>
-                                    </a>
-                                ) : (
-                                    <span className="text-xs text-red-500 block text-center">No Payment Rec.</span>
-                                )}
-                            </td>
-                            <td className="p-4">
-                                <span className="bg-slate-900 px-2 py-1 rounded text-xs font-mono">{player.category}</span>
-                            </td>
-                            <td className="p-4">
-                                <div className="mb-2">
-                                    <span 
-                                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                            player.paymentStatus ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200'
-                                        }`}
-                                    >
-                                        {player.paymentStatus ? 'PAID' : 'UNPAID'}
-                                    </span>
-                                </div>
-                                {player.upiOrBarcode ? (
-                                    <div className="text-xs font-mono bg-slate-900 p-1 rounded border border-gray-700 text-gray-400 break-all">
-                                        Ref: {player.upiOrBarcode}
-                                    </div>
-                                ) : (
-                                    <div className="text-xs text-red-500">No Txn ID</div>
-                                )}
-                            </td>
-                            <td className="p-4 flex gap-2">
-                                <button 
-                                    onClick={() => openProfileModal(player)}
-                                    className="text-xs bg-ublCyan text-black font-bold px-2 py-1 rounded hover:bg-white transition-colors"
-                                >
-                                    View Full Profile
-                                </button>
-                                
-                                {!player.paymentStatus ? (
-                                    <button 
-                                        onClick={() => openPaymentModal(player._id!, player.paymentStatus, player.name)}
-                                        className="text-xs bg-slate-600 hover:bg-slate-500 text-white px-2 py-1 rounded transition-colors whitespace-nowrap"
-                                        title="Mark as Paid"
-                                    >
-                                        Mark Paid
-                                    </button>
-                                ) : (
-                                    <span className="text-xs text-green-500 border border-green-500/30 bg-green-900/20 px-2 py-1 rounded font-bold cursor-default select-none">
-                                        PAID
-                                    </span>
-                                )}
+      {/* Control Panel */}
+      <div className="bg-slate-900/50 backdrop-blur-xl rounded-3xl border border-white/5 overflow-hidden shadow-2xl mb-10">
+        <div className="p-6 bg-black/20 flex flex-wrap gap-4 items-center justify-between border-b border-white/5">
+            <div className="relative w-full md:w-96">
+                <input 
+                    value={search}
+                    onChange={e => {setSearch(e.target.value); setPage(1);}}
+                    placeholder="SEARCH BY NAME, MOBILE..." 
+                    className="w-full bg-black/40 border border-gray-800 rounded-xl px-5 py-3 text-sm text-white outline-none focus:border-ublCyan transition-all pl-12"
+                />
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 opacity-30">🔍</span>
+            </div>
+            <div className="flex gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+                <select value={category} onChange={e => setCategory(e.target.value)} className="bg-black/40 border border-gray-800 rounded-xl px-4 py-3 text-xs text-white outline-none hover:border-ublCyan transition-all">
+                    <option value="">ALL CATEGORIES</option>
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)} className="bg-black/40 border border-gray-800 rounded-xl px-4 py-3 text-xs text-white outline-none hover:border-ublCyan transition-all">
+                    <option value="">ALL STATUS</option>
+                    <option value="true">PAID</option>
+                    <option value="false">UNPAID</option>
+                </select>
+                <select value={sort} onChange={e => setSort(e.target.value)} className="bg-black/40 border border-gray-800 rounded-xl px-4 py-3 text-xs text-white outline-none hover:border-ublCyan transition-all">
+                    <option value="createdAt:desc">LATEST FIRST</option>
+                    <option value="createdAt:asc">OLDEST FIRST</option>
+                    <option value="name:asc">NAME A-Z</option>
+                </select>
+            </div>
+        </div>
 
-                                <button 
-                                    onClick={() => openDeleteModal(player._id!, player.name)}
-                                    className="text-xs bg-red-900/50 hover:bg-red-600 text-red-200 px-2 py-1 rounded transition-colors"
-                                    title="Delete"
-                                >
-                                    Delete
-                                </button>
-                            </td>
-                        </tr>
-                    ))
-                )}
-            </tbody>
-        </table>
-      </div>
-
-      {/* Pagination */}
-      <div className="flex justify-center mt-6 space-x-2">
-         <button 
-            disabled={page === 1}
-            onClick={() => setPage(p => p - 1)}
-            className="px-4 py-2 bg-slate-800 rounded text-sm hover:bg-slate-700 disabled:opacity-50"
-         >
-            Prev
-         </button>
-         <span className="px-4 py-2 text-sm text-gray-400">Page {page} of {totalPages}</span>
-         <button 
-            disabled={page === totalPages || totalPages === 0}
-            onClick={() => setPage(p => p + 1)}
-            className="px-4 py-2 bg-slate-800 rounded text-sm hover:bg-slate-700 disabled:opacity-50"
-         >
-            Next
-         </button>
-      </div>
-
-      {/* MODAL */}
-      {modalConfig.isOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
-              <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setModalConfig({...modalConfig, isOpen: false})}></div>
-              
-              {/* CONTENT FOR PROFILE MODAL */}
-              {modalConfig.type === 'PROFILE' && modalConfig.itemData ? (
-                 <div className="relative bg-slate-900 border border-gray-700 rounded-2xl w-full max-w-4xl shadow-2xl animate-bounce-in flex flex-col max-h-[90vh]">
-                    <div className="p-6 border-b border-gray-700 flex justify-between items-center bg-black/40 rounded-t-2xl">
-                        <h3 className="text-2xl font-black text-ublCyan italic tracking-wider">{modalConfig.title}</h3>
-                        <button onClick={() => setModalConfig({...modalConfig, isOpen: false})} className="text-gray-400 hover:text-white text-2xl">&times;</button>
-                    </div>
-                    
-                    <div className="p-8 overflow-y-auto">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                            
-                            {/* Left Column: Images */}
-                            <div className="space-y-6">
-                                <div className="text-center">
-                                    <p className="text-xs text-ublCyan font-bold uppercase mb-2">Player Photo</p>
-                                    <img src={modalConfig.itemData.playerImageUrl} alt="Player" className="w-48 h-48 object-cover rounded-xl border-2 border-ublCyan mx-auto shadow-[0_0_20px_rgba(6,182,212,0.3)]" />
-                                    <a href={modalConfig.itemData.playerImageUrl} target="_blank" rel="noreferrer" className="block mt-2 text-xs text-gray-400 hover:text-white underline">Open Full Size</a>
-                                </div>
-                                
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <p className="text-xs text-gray-400 font-bold uppercase mb-2">ID Proof</p>
-                                        <a href={modalConfig.itemData.validDocumentUrl} target="_blank" rel="noreferrer" className="block bg-slate-800 p-2 rounded hover:bg-slate-700 text-center">
-                                            <span className="text-2xl">📄</span>
-                                            <span className="block text-[10px] mt-1">View Doc</span>
-                                        </a>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-gray-400 font-bold uppercase mb-2">Payment</p>
-                                        {modalConfig.itemData.paymentScreenshotUrl ? (
-                                            <a href={modalConfig.itemData.paymentScreenshotUrl} target="_blank" rel="noreferrer" className="block bg-slate-800 p-2 rounded hover:bg-slate-700 text-center">
-                                                <span className="text-2xl">💸</span>
-                                                <span className="block text-[10px] mt-1">View Receipt</span>
-                                            </a>
-                                        ) : (
-                                            <div className="bg-red-900/20 p-2 rounded text-center border border-red-500/20">
-                                                <span className="text-red-500 text-xs">Missing</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Middle & Right: Details */}
-                            <div className="md:col-span-2 space-y-6">
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div>
-                                        <label className="text-gray-500 text-xs uppercase font-bold">Email</label>
-                                        <p className="text-white font-mono">{modalConfig.itemData.email || 'N/A'}</p>
-                                    </div>
-                                    <div>
-                                        <label className="text-gray-500 text-xs uppercase font-bold">Mobile</label>
-                                        <p className="text-white font-mono text-xl">{modalConfig.itemData.mobile}</p>
-                                    </div>
-                                    <div>
-                                        <label className="text-gray-500 text-xs uppercase font-bold">Date of Birth (Age)</label>
-                                        <p className="text-white">{new Date(modalConfig.itemData.dob).toLocaleDateString()} <span className="text-ublCyan font-bold">({modalConfig.itemData.age} Yrs)</span></p>
-                                    </div>
-                                    <div>
-                                        <label className="text-gray-500 text-xs uppercase font-bold">Adhar Number</label>
-                                        <p className="text-white font-mono tracking-widest">{modalConfig.itemData.adhar || 'N/A'}</p>
-                                    </div>
-                                    <div>
-                                        <label className="text-gray-500 text-xs uppercase font-bold">Category</label>
-                                        <span className="bg-ublCyan text-black px-2 py-1 rounded font-bold text-sm">{modalConfig.itemData.category}</span>
-                                    </div>
-                                    <div>
-                                        <label className="text-gray-500 text-xs uppercase font-bold">Playing Style</label>
-                                        <p className="text-white font-bold">{modalConfig.itemData.playingStyle}</p>
-                                    </div>
-                                </div>
-
-                                <div className="bg-slate-800/50 p-4 rounded-xl border border-white/5">
-                                    <label className="text-ublCyan text-xs uppercase font-bold mb-2 block">Achievements</label>
-                                    <p className="text-gray-300 text-sm whitespace-pre-wrap">{modalConfig.itemData.achievements || 'No achievements listed.'}</p>
-                                </div>
-
-                                <div className="bg-slate-800/50 p-4 rounded-xl border border-white/5">
-                                    <label className="text-ublCyan text-xs uppercase font-bold mb-2 block">Remarks</label>
-                                    <p className="text-gray-300 text-sm whitespace-pre-wrap">{modalConfig.itemData.remark || 'No remarks.'}</p>
-                                </div>
-
-                                <div className="pt-4 border-t border-gray-700 flex justify-between items-center">
-                                    <div>
-                                        <label className="text-gray-500 text-xs uppercase font-bold">Payment Status</label>
-                                        <div className={`text-sm font-bold ${modalConfig.itemData.paymentStatus ? 'text-green-400' : 'text-red-400'}`}>
-                                            {modalConfig.itemData.paymentStatus ? 'PAID' : 'UNPAID'}
+        {/* Players Table */}
+        <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+                <thead className="bg-black/40 text-gray-500 font-black uppercase text-[10px] tracking-[0.2em]">
+                    <tr>
+                        <th className="p-6">Player Identity</th>
+                        <th className="p-6 text-center">Resources</th>
+                        <th className="p-6 text-center">Category</th>
+                        <th className="p-6 text-center">Payment Status</th>
+                        <th className="p-6 text-right">Management</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                    {loading ? (
+                        <tr><td colSpan={5} className="p-20 text-center text-gray-500 font-bold animate-pulse uppercase tracking-widest">Updating Records...</td></tr>
+                    ) : players.length === 0 ? (
+                        <tr><td colSpan={5} className="p-20 text-center text-gray-600 font-bold uppercase tracking-widest">No matching players found</td></tr>
+                    ) : (
+                        players.map(player => (
+                            <tr key={player._id} className="hover:bg-white/[0.03] transition-colors group">
+                                <td className="p-6">
+                                    <div className="flex items-center gap-4">
+                                        <div className="relative cursor-pointer shrink-0" onClick={() => openProfileModal(player)}>
+                                            <img src={player.playerImageUrl} alt="" className="w-12 h-12 rounded-full object-cover border border-white/10 group-hover:border-ublCyan transition-all shadow-xl" />
+                                            {player.paymentStatus && <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-slate-900 rounded-full"></div>}
+                                        </div>
+                                        <div>
+                                            <div className="font-black text-white text-base tracking-tight cursor-pointer hover:text-ublCyan transition-all" onClick={() => openProfileModal(player)}>{player.name}</div>
+                                            <div className="text-xs text-gray-500 font-mono">{player.mobile}</div>
                                         </div>
                                     </div>
-                                    <div>
-                                        <label className="text-gray-500 text-xs uppercase font-bold">Transaction Ref</label>
-                                        <div className="text-white font-mono text-sm">{modalConfig.itemData.upiOrBarcode || 'N/A'}</div>
+                                </td>
+                                <td className="p-6">
+                                    <div className="flex justify-center gap-3">
+                                        <a href={player.validDocumentUrl} target="_blank" className="p-3 bg-slate-800 rounded-xl hover:bg-ublCyan hover:text-black transition-all shadow-lg" title="Identity Proof">🪪</a>
+                                        {player.paymentScreenshotUrl ? (
+                                            <a href={player.paymentScreenshotUrl} target="_blank" className="p-3 bg-slate-800 rounded-xl hover:bg-emerald-500 hover:text-black transition-all shadow-lg" title="Payment Receipt">🧾</a>
+                                        ) : (
+                                            <div className="p-3 bg-rose-900/20 text-rose-500 rounded-xl border border-rose-500/20" title="Missing Receipt">❌</div>
+                                        )}
                                     </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                 </div>
+                                </td>
+                                <td className="p-6 text-center">
+                                    <span className="text-[11px] font-black bg-white/5 border border-white/5 px-3 py-1.5 rounded-full text-gray-400 uppercase">{player.category}</span>
+                                </td>
+                                <td className="p-6 text-center">
+                                    {player.paymentStatus ? (
+                                        <div className="inline-flex items-center gap-2 text-[10px] font-black bg-emerald-500/10 text-emerald-400 px-4 py-2 rounded-full border border-emerald-500/20 uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+                                            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                                            Verified
+                                        </div>
+                                    ) : (
+                                        <div className="inline-flex items-center gap-2 text-[10px] font-black bg-rose-500/10 text-rose-400 px-4 py-2 rounded-full border border-rose-500/20 uppercase tracking-widest shadow-[0_0_15px_rgba(244,63,94,0.1)]">
+                                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full"></span>
+                                            Pending
+                                        </div>
+                                    )}
+                                </td>
+                                <td className="p-6 text-right">
+                                    <div className="flex justify-end gap-3 items-center">
+                                        {!player.paymentStatus ? (
+                                            <button 
+                                                onClick={() => openPaymentModal(player._id!, player.paymentStatus, player.name)}
+                                                className="text-[10px] font-black bg-emerald-500 text-black px-4 py-2.5 rounded-xl hover:bg-white transition-all uppercase tracking-widest"
+                                            >
+                                                Mark Paid
+                                            </button>
+                                        ) : (
+                                            <button 
+                                                onClick={() => openProfileModal(player)}
+                                                className="text-[10px] font-black border border-white/10 text-gray-400 px-4 py-2.5 rounded-xl hover:bg-white hover:text-black transition-all uppercase tracking-widest"
+                                            >
+                                                Details
+                                            </button>
+                                        )}
+                                        <button onClick={() => openDeleteModal(player._id!, player.name)} className="bg-rose-900/20 text-rose-500 p-2.5 rounded-xl hover:bg-rose-500 hover:text-white transition-all border border-rose-500/10" title="Delete">🗑️</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))
+                    )}
+                </tbody>
+            </table>
+        </div>
+        
+        {/* Pagination */}
+        <div className="p-6 border-t border-white/5 flex justify-between items-center bg-black/10">
+            <p className="text-xs text-gray-500 font-bold">Showing page {page} of {totalPages}</p>
+            <div className="flex gap-2">
+                <button 
+                    disabled={page === 1}
+                    onClick={() => setPage(p => p - 1)}
+                    className="p-3 bg-slate-800 rounded-xl hover:bg-ublCyan hover:text-black disabled:opacity-20 transition-all font-black text-xs uppercase"
+                >
+                    Prev
+                </button>
+                <button 
+                    disabled={page >= totalPages}
+                    onClick={() => setPage(p => p + 1)}
+                    className="p-3 bg-slate-800 rounded-xl hover:bg-ublCyan hover:text-black disabled:opacity-20 transition-all font-black text-xs uppercase"
+                >
+                    Next
+                </button>
+            </div>
+        </div>
+      </div>
+
+      {/* Dynamic Modals */}
+      {modalConfig.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/90 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setModalConfig({...modalConfig, isOpen: false})}></div>
+              
+              {modalConfig.type === 'PROFILE' && modalConfig.itemData ? (
+                  <div className="relative bg-slate-900 border border-white/10 rounded-[2.5rem] w-full max-w-4xl shadow-[0_0_100px_rgba(0,0,0,0.8)] overflow-hidden animate-in zoom-in duration-300 max-h-[90vh] flex flex-col">
+                      <div className="flex flex-col md:flex-row h-full">
+                          {/* Profile Sidebar */}
+                          <div className="w-full md:w-80 bg-black/40 p-8 flex flex-col items-center border-r border-white/5 shrink-0">
+                              <img src={modalConfig.itemData.playerImageUrl} alt="" className="w-48 h-48 rounded-[2rem] object-cover border-4 border-ublCyan shadow-[0_0_40px_rgba(34,211,238,0.3)] mb-6" />
+                              <h3 className="text-2xl font-black text-white italic text-center mb-1 leading-tight">{modalConfig.itemData.name}</h3>
+                              <p className="text-ublCyan font-black text-xs uppercase tracking-[0.2em] mb-8">{modalConfig.itemData.category} Category</p>
+                              
+                              <div className="w-full space-y-3">
+                                  <a href={modalConfig.itemData.validDocumentUrl} target="_blank" className="flex items-center justify-between w-full bg-slate-800/50 p-4 rounded-2xl hover:bg-ublCyan hover:text-black transition-all group">
+                                      <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Identity Doc</span>
+                                      <span className="text-xl">📄</span>
+                                  </a>
+                                  {modalConfig.itemData.paymentScreenshotUrl && (
+                                      <a href={modalConfig.itemData.paymentScreenshotUrl} target="_blank" className="flex items-center justify-between w-full bg-slate-800/50 p-4 rounded-2xl hover:bg-emerald-500 hover:text-black transition-all group">
+                                          <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Payment Slip</span>
+                                          <span className="text-xl">🧾</span>
+                                      </a>
+                                  )}
+                              </div>
+                          </div>
+
+                          {/* Profile Body */}
+                          <div className="flex-1 p-8 md:p-12 overflow-y-auto">
+                              <div className="flex justify-between items-start mb-10">
+                                  <div className="space-y-1">
+                                      <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Registration Status</p>
+                                      {modalConfig.itemData.paymentStatus ? (
+                                          <span className="text-emerald-500 font-black text-sm italic uppercase">Verified Official</span>
+                                      ) : (
+                                          <span className="text-rose-500 font-black text-sm italic uppercase">Verification Pending</span>
+                                      )}
+                                  </div>
+                                  <button onClick={() => setModalConfig({...modalConfig, isOpen: false})} className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center text-xl hover:bg-white hover:text-black transition-all">&times;</button>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-8 mb-10">
+                                  <div>
+                                      <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-1 block">Phone</label>
+                                      <p className="text-white font-bold text-lg">{modalConfig.itemData.mobile}</p>
+                                  </div>
+                                  <div>
+                                      <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-1 block">Email</label>
+                                      <p className="text-white font-bold text-lg break-all">{modalConfig.itemData.email || 'N/A'}</p>
+                                  </div>
+                                  <div>
+                                      <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-1 block">Playing Style</label>
+                                      <span className="inline-block bg-ublCyan/10 text-ublCyan border border-ublCyan/20 px-3 py-1 rounded-lg text-xs font-black uppercase">{modalConfig.itemData.playingStyle}</span>
+                                  </div>
+                                  <div>
+                                      <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-1 block">Aadhar No</label>
+                                      <p className="text-white font-mono tracking-widest">{modalConfig.itemData.adhar || 'NOT PROVIDED'}</p>
+                                  </div>
+                              </div>
+
+                              <div className="space-y-8">
+                                  {modalConfig.itemData.achievements && (
+                                      <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
+                                          <label className="text-ublCyan text-[10px] font-black uppercase tracking-widest mb-3 block">Achievements</label>
+                                          <p className="text-gray-300 text-sm leading-relaxed">{modalConfig.itemData.achievements}</p>
+                                      </div>
+                                  )}
+                                  <div className="grid grid-cols-2 gap-4 pt-6 border-t border-white/5">
+                                      <div>
+                                          <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-1 block">Transaction Ref</label>
+                                          <p className="text-white font-mono text-sm uppercase">{modalConfig.itemData.upiOrBarcode || 'NONE'}</p>
+                                      </div>
+                                      <div className="text-right">
+                                          <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-1 block">Registered Date</label>
+                                          <p className="text-white font-mono text-xs opacity-50">{new Date(modalConfig.itemData.createdAt).toLocaleDateString()}</p>
+                                      </div>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
               ) : (
-                // STANDARD MODAL (Confirm/Delete)
-                <div className="relative bg-slate-900 border border-gray-700 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-bounce-in">
-                    <h3 className="text-xl font-bold text-white mb-2">{modalConfig.title}</h3>
-                    <p className="text-gray-300 mb-6">{modalConfig.message}</p>
-                    
-                    <div className="flex justify-end space-x-3">
-                        <button 
-                            onClick={() => setModalConfig({...modalConfig, isOpen: false})}
-                            className="px-4 py-2 text-gray-400 hover:text-white font-bold"
-                        >
-                            Cancel
-                        </button>
-                        <button 
-                            onClick={handleConfirmAction}
-                            className={`px-6 py-2 rounded font-bold text-black ${modalConfig.type === 'DELETE' ? 'bg-red-500 hover:bg-red-400' : 'bg-ublCyan hover:bg-white'}`}
-                        >
-                            Confirm
-                        </button>
-                    </div>
-                </div>
+                  <div className="relative bg-slate-900 border border-white/10 p-10 rounded-[2.5rem] w-full max-w-sm shadow-2xl animate-in zoom-in duration-300 text-center">
+                      <div className="w-20 h-20 bg-ublCyan/10 text-ublCyan text-4xl flex items-center justify-center rounded-3xl mx-auto mb-6 border border-ublCyan/20">
+                          {modalConfig.type === 'DELETE' ? '⚠️' : '✅'}
+                      </div>
+                      <h3 className="text-2xl font-black text-white italic uppercase mb-3 tracking-tighter">{modalConfig.title}</h3>
+                      <p className="text-gray-400 text-sm mb-10 leading-relaxed font-medium">{modalConfig.message}</p>
+                      <div className="flex gap-4">
+                          <button onClick={() => setModalConfig({...modalConfig, isOpen: false})} className="flex-1 text-gray-500 font-black hover:text-white uppercase text-xs tracking-widest py-4 transition-all">Cancel</button>
+                          <button 
+                              onClick={handleConfirmAction} 
+                              className={`flex-1 ${modalConfig.type === 'DELETE' ? 'bg-rose-500' : 'bg-ublCyan'} text-black font-black uppercase px-6 py-4 rounded-2xl hover:bg-white transition-all text-xs tracking-widest`}
+                          >
+                              {modalConfig.type === 'DELETE' ? 'Delete Now' : 'Confirm'}
+                          </button>
+                      </div>
+                  </div>
               )}
           </div>
       )}
-
     </div>
   );
 };

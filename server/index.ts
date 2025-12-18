@@ -22,6 +22,7 @@ mongoose.connect(MONGO_URI)
 app.use('/api', playerRoutes);
 
 // --- Serve Static Frontend (Production) ---
+// In CommonJS (configured in tsconfig.json), __dirname is globally available.
 const clientDistPath = path.join(__dirname, '../client/dist');
 app.use(express.static(clientDistPath) as any);
 

@@ -3,8 +3,10 @@ import { useForm, SubmitHandler } from 'react-hook-form';
 import axios from 'axios';
 import { CATEGORIES } from '../types';
 
-// UPDATED: Points to client/public/assets/logo.png (User provided)
+// Asset Paths
 const LOGO_URL = '/assets/logo.png';
+const QR_URL = '/assets/qr.jpg';
+const OFFICIAL_UPI = 'boim-900781510442@boi';
 
 // Background: High energy stadium/badminton feel
 const BG_URL = 'https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?q=80&w=2069&auto=format&fit=crop';
@@ -21,13 +23,12 @@ interface FormInputs {
   playerAchievement: string;
   playingStyle: 'OFFENSIVE' | 'DEFENSIVE' | 'UNKNOWN';
   remark: string;
-  // Virtual file fields for handling upload
   playerImageFiles: FileList;
   validDocumentFiles: FileList;
   paymentScreenshotFiles?: FileList;
 }
 
-const API_BASE = '/api'; // Use relative path via Vite proxy
+const API_BASE = '/api';
 
 const Register: React.FC = () => {
   const [showWelcome, setShowWelcome] = useState(true);
@@ -37,11 +38,13 @@ const Register: React.FC = () => {
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [submitMessage, setSubmitMessage] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [copied, setCopied] = useState(false);
 
   const { register, handleSubmit, watch, setValue, trigger, formState: { errors } } = useForm<FormInputs>({
     defaultValues: {
       category: '',
-      playingStyle: 'UNKNOWN'
+      playingStyle: 'UNKNOWN',
+      adhar: ''
     },
     mode: 'onBlur'
   });
@@ -49,7 +52,7 @@ const Register: React.FC = () => {
   const dob = watch('dob');
   const selectedCategory = watch('category');
 
-  // Auto-calculate age
+  // Auto-calculate age from DOB
   useEffect(() => {
     if (dob) {
       const birthDate = new Date(dob);
@@ -59,10 +62,15 @@ const Register: React.FC = () => {
       if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
         age--;
       }
-      // Update value and trigger validation
       setValue('age', age, { shouldValidate: true });
     }
   }, [dob, setValue]);
+
+  const copyUpi = () => {
+    navigator.clipboard.writeText(OFFICIAL_UPI);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const uploadFile = async (file: File): Promise<string> => {
     const formData = new FormData();
@@ -74,13 +82,12 @@ const Register: React.FC = () => {
   };
 
   const onStep1Submit = async () => {
-    // 1. Validate Fields
+    // Validate Step 1 fields
     const isValid = await trigger(['name', 'mobile', 'email', 'dob', 'age', 'adhar', 'category', 'playerImageFiles', 'validDocumentFiles']);
     
     if (!isValid) {
         setSubmitStatus('error');
-        setSubmitMessage("Please fix the highlighted errors above.");
-        // Scroll to top to see errors
+        setSubmitMessage("Please check the form for errors.");
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
     }
@@ -92,23 +99,10 @@ const Register: React.FC = () => {
 
     try {
         const data = watch();
-        // 2. Upload Player Image & Document
-        if (!data.playerImageFiles || data.playerImageFiles.length === 0) {
-            throw new Error("Player image is required");
-        }
-        if (!data.validDocumentFiles || data.validDocumentFiles.length === 0) {
-            throw new Error("Valid Document is required");
-        }
-        
-        // Basic file size check (5MB)
-        if (data.playerImageFiles[0].size > 5 * 1024 * 1024) {
-            throw new Error("Image size too large. Max 5MB allowed.");
-        }
-        if (data.validDocumentFiles[0].size > 5 * 1024 * 1024) {
-            throw new Error("Document size too large. Max 5MB allowed.");
+        if (!data.playerImageFiles?.[0] || !data.validDocumentFiles?.[0]) {
+            throw new Error("Identity Proof and Photo are required.");
         }
 
-        // Upload concurrently
         const [playerImageUrl, validDocumentUrl] = await Promise.all([
             uploadFile(data.playerImageFiles[0]),
             uploadFile(data.validDocumentFiles[0])
@@ -116,7 +110,6 @@ const Register: React.FC = () => {
 
         setUploadProgress(50);
 
-        // 3. Create Player Record
         const payload = {
             name: data.name,
             email: data.email,
@@ -127,497 +120,263 @@ const Register: React.FC = () => {
             category: data.category,
             playerImageUrl,
             validDocumentUrl,
-            paymentStatus: false // Default to false initially
+            paymentStatus: false
         };
 
         const res = await axios.post(`${API_BASE}/players`, payload);
         setRegisteredPlayerId(res.data._id);
-        
-        // 4. Move to step 2
         setStep(2);
         setUploadProgress(0);
         window.scrollTo(0,0);
     } catch (err: any) {
-        console.error(err);
         setSubmitStatus('error');
-        setSubmitMessage(err.response?.data?.error || err.message || "Failed to save details. Please try again.");
+        setSubmitMessage(err.response?.data?.error || err.message || "Failed to save details.");
     } finally {
         setIsSubmitting(false);
     }
   };
 
-  const onStep2Submit: SubmitHandler<FormInputs> = async (data, e) => {
-    if (!registeredPlayerId) {
-        setSubmitStatus('error');
-        setSubmitMessage("Session lost. Please refresh and try again.");
-        return;
-    }
-
+  const onStep2Submit: SubmitHandler<FormInputs> = async (data) => {
+    if (!registeredPlayerId) return;
     setIsSubmitting(true);
     setUploadProgress(10);
 
     try {
-        // 1. Upload Payment Screenshot (Mandatory now)
-        if (!data.paymentScreenshotFiles || data.paymentScreenshotFiles.length === 0) {
-            throw new Error("Payment Screenshot is required.");
+        if (!data.paymentScreenshotFiles?.[0]) {
+            throw new Error("Payment screenshot is required.");
         }
         
-        // Check size (10MB)
-        if (data.paymentScreenshotFiles[0].size > 10 * 1024 * 1024) {
-            throw new Error("Screenshot too large. Max 10MB allowed.");
-        }
-
         const paymentScreenshotUrl = await uploadFile(data.paymentScreenshotFiles[0]);
         setUploadProgress(60);
 
-        // 2. Update Record
         const payload = {
             upiOrBarcode: data.upiOrBarcode,
             achievements: data.playerAchievement,
             playingStyle: data.playingStyle,
             remark: data.remark,
             paymentScreenshotUrl,
-            paymentStatus: true // Always true when submitting the final step
+            paymentStatus: true
         };
 
         await axios.patch(`${API_BASE}/players/${registeredPlayerId}/details`, payload);
 
         setUploadProgress(100);
         setSubmitStatus('success');
-        setSubmitMessage("Registration complete! See you on the court.");
+        setSubmitMessage("Registration successful! Welcome to the United Badminton League.");
         window.scrollTo(0,0);
-
     } catch (err: any) {
-        console.error(err);
         setSubmitStatus('error');
-        setSubmitMessage(err.response?.data?.error || err.message || "Failed to complete registration.");
+        setSubmitMessage(err.response?.data?.error || err.message || "Final step failed.");
     } finally {
         setIsSubmitting(false);
     }
   };
 
-  // --- VIEW: SUCCESS ---
   if (submitStatus === 'success') {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center animate-fade-in bg-ublDark relative overflow-hidden">
-        {/* Success Background */}
-        <div 
-            className="absolute inset-0 bg-cover bg-center z-0 opacity-40 mix-blend-overlay"
-            style={{ backgroundImage: `url(${BG_URL})` }}
-        ></div>
-        <div className="absolute inset-0 bg-gradient-to-t from-ublDark via-ublDark/90 to-blue-900/50"></div>
-        
-        <div className="z-10 flex flex-col items-center animate-bounce-in">
-            <div className="w-32 h-32 mb-8 rounded-full bg-black/50 backdrop-blur border-4 border-ublCyan shadow-[0_0_50px_rgba(34,211,238,0.6)] flex items-center justify-center">
-                <img src={LOGO_URL} alt="Logo" className="w-24 h-24 object-contain drop-shadow-[0_0_10px_rgba(34,211,238,1)]" />
-            </div>
-            <h2 className="text-5xl md:text-7xl font-black text-white mb-4 neon-text italic uppercase tracking-tighter">WELCOME TO UBL</h2>
-            <p className="text-ublCyan font-bold text-xl mb-8 max-w-lg tracking-widest">{submitMessage}</p>
-            <button onClick={() => window.location.reload()} className="px-12 py-5 bg-ublCyan text-black font-black uppercase tracking-widest rounded-full hover:bg-white hover:shadow-[0_0_50px_rgba(34,211,238,1)] hover:scale-105 transition duration-300">
-            Register Another Player
+      <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center bg-ublDark relative overflow-hidden">
+        <div className="absolute inset-0 bg-cover bg-center opacity-20" style={{ backgroundImage: `url(${BG_URL})` }}></div>
+        <div className="z-10 animate-in zoom-in duration-500 flex flex-col items-center">
+            <img src={LOGO_URL} alt="Logo" className="w-32 h-32 mb-8 drop-shadow-[0_0_15px_rgba(34,211,238,1)]" />
+            <h2 className="text-5xl md:text-6xl font-black text-white mb-4 italic tracking-tighter uppercase">SUCCESSFULLY REGISTERED</h2>
+            <p className="text-ublCyan font-bold text-xl md:text-2xl mb-12 tracking-widest max-w-lg">{submitMessage}</p>
+            <button onClick={() => window.location.reload()} className="px-12 py-5 bg-ublCyan text-black font-black uppercase tracking-widest rounded-full hover:bg-white hover:shadow-[0_0_40px_rgba(34,211,238,1)] transition-all">
+                Register New Player
             </button>
         </div>
       </div>
     );
   }
 
-  // --- VIEW: WELCOME LANDING ---
   if (showWelcome) {
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center animate-fade-in bg-ublDark relative overflow-hidden">
-            {/* Background */}
-            <div 
-                className="absolute inset-0 bg-cover bg-center z-0 opacity-40 mix-blend-overlay"
-                style={{ backgroundImage: `url(${BG_URL})` }}
-            ></div>
-            <div className="absolute inset-0 bg-gradient-to-t from-ublDark via-ublDark/90 to-blue-900/50"></div>
+        <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center bg-ublDark relative overflow-hidden">
+            <div className="absolute inset-0 bg-cover bg-center opacity-30 mix-blend-overlay" style={{ backgroundImage: `url(${BG_URL})` }}></div>
+            <div className="absolute inset-0 bg-gradient-to-t from-ublDark via-transparent to-transparent"></div>
             
-            {/* Content */}
-            <div className="z-10 flex flex-col items-center max-w-2xl w-full animate-in slide-in-from-bottom-10 fade-in duration-1000">
-                <div className="relative mb-10 group">
-                     <div className="absolute inset-0 bg-ublCyan/30 rounded-full blur-3xl opacity-50 animate-pulse"></div>
-                     <img src={LOGO_URL} alt="Logo" className="w-48 h-48 md:w-64 md:h-64 object-contain relative z-10 drop-shadow-[0_0_20px_rgba(34,211,238,0.8)]" />
-                </div>
-                
-                <h1 className="text-6xl md:text-8xl font-black italic tracking-tighter text-white drop-shadow-[0_0_15px_rgba(34,211,238,0.6)] mb-2 leading-none">
-                    UNITED <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-ublCyan to-white">BADMINTON</span> <br/> LEAGUE
+            <div className="z-10 animate-in slide-in-from-bottom-10 duration-1000 flex flex-col items-center max-w-4xl">
+                <img src={LOGO_URL} alt="Logo" className="w-56 h-56 md:w-72 md:h-72 object-contain mb-8 drop-shadow-[0_0_30px_rgba(34,211,238,0.8)] animate-pulse-slow" />
+                <h1 className="text-6xl md:text-9xl font-black italic tracking-tighter text-white leading-none mb-6">
+                    UNITED <br/> <span className="text-transparent bg-clip-text bg-gradient-to-r from-ublCyan to-blue-500">BADMINTON</span> <br/> LEAGUE
                 </h1>
-                
-                <p className="text-gray-300 text-lg md:text-xl font-bold uppercase tracking-[0.2em] mb-12 mt-6">
-                    Official Player Registration Portal
-                </p>
-                
+                <p className="text-gray-400 text-xl font-bold uppercase tracking-[0.3em] mb-12">Season 2024 Registration Open</p>
                 <button 
                     onClick={() => setShowWelcome(false)} 
-                    className="w-full md:w-auto px-16 py-6 bg-gradient-to-r from-ublCyan to-blue-500 text-black font-black uppercase text-xl md:text-2xl tracking-widest rounded-full shadow-[0_0_40px_rgba(6,182,212,0.5)] hover:shadow-[0_0_60px_rgba(6,182,212,0.8)] hover:scale-105 hover:bg-white transition-all duration-300"
+                    className="group relative px-20 py-8 bg-ublCyan text-black font-black uppercase text-2xl tracking-widest rounded-full hover:bg-white hover:shadow-[0_0_60px_rgba(34,211,238,1)] transition-all duration-300 transform hover:scale-105"
                 >
                     Start Registration
+                    <div className="absolute inset-0 rounded-full border-4 border-ublCyan group-hover:scale-125 group-hover:opacity-0 transition-all duration-500"></div>
                 </button>
             </div>
         </div>
     );
   }
 
-  // --- VIEW: FORM ---
   return (
-    <div className="min-h-screen flex justify-center items-start py-10 px-4 relative bg-ublDark selection:bg-ublCyan selection:text-black overflow-x-hidden">
+    <div className="min-h-screen flex justify-center py-12 px-4 relative bg-ublDark">
+      <div className="fixed inset-0 z-0 opacity-20 bg-cover bg-center" style={{ backgroundImage: `url(${BG_URL})` }}></div>
       
-      {/* --- CRAZY BACKGROUND START --- */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        {/* Base Image */}
-        <div 
-            className="absolute inset-0 bg-cover bg-center opacity-40"
-            style={{ backgroundImage: `url(${BG_URL})` }}
-        ></div>
-        {/* Color Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-b from-ublDark/80 via-ublNavy/90 to-ublDark"></div>
-        
-        {/* Moving Grid Floor */}
-        <div className="absolute inset-0 opacity-20" 
-             style={{ 
-                 backgroundImage: 'linear-gradient(rgba(6,182,212,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(6,182,212,0.3) 1px, transparent 1px)',
-                 backgroundSize: '40px 40px',
-                 transform: 'perspective(500px) rotateX(60deg) translateY(-100px) scale(2)',
-                 animation: 'background-pan 20s linear infinite'
-             }}>
-        </div>
-
-        {/* Floating Neon Orbs */}
-        <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-ublCyan/20 rounded-full blur-[120px] animate-pulse"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-blue-600/20 rounded-full blur-[150px] animate-pulse" style={{ animationDuration: '4s' }}></div>
-      </div>
-      {/* --- CRAZY BACKGROUND END --- */}
-
-      <div className="w-full max-w-5xl bg-black/60 backdrop-blur-xl border border-white/10 rounded-3xl shadow-[0_0_60px_rgba(6,182,212,0.2)] overflow-hidden relative z-10 animate-in zoom-in-95 duration-500">
-        
-        <div className="relative">
-            {/* Top accent bar */}
-            <div className="h-2 w-full bg-gradient-to-r from-blue-600 via-ublCyan to-blue-600 animate-pulse"></div>
+      <div className="w-full max-w-4xl bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl relative z-10 overflow-hidden">
+        <div className="h-2 bg-gradient-to-r from-ublCyan to-blue-600"></div>
+        <div className="p-8 md:p-12">
             
-            <div className="p-6 md:p-12">
-            
-            {/* Header Section */}
-            <div className="flex flex-col items-center mb-10 text-center relative">
-                {/* Small Header Logo */}
-                <div className="relative mb-6 cursor-pointer" onClick={() => setShowWelcome(true)}>
-                    <img src={LOGO_URL} alt="UBL Logo" className="w-20 h-20 object-contain drop-shadow-[0_0_10px_rgba(6,182,212,0.8)]" />
-                </div>
-                
-                <h1 className="text-3xl md:text-5xl font-black italic tracking-tighter text-white mb-2">
-                PLAYER REGISTRATION
-                </h1>
-                
-                {/* Stepper */}
-                <div className="flex items-center space-x-4 mt-8 bg-black/40 px-6 py-2 rounded-full border border-white/5">
-                    <div className={`flex items-center space-x-2 ${step === 1 ? 'text-ublCyan' : 'text-gray-500'}`}>
-                        <span className="text-2xl font-black">01</span>
-                        <span className="text-xs font-bold uppercase tracking-wider hidden md:inline">Player Details</span>
-                    </div>
-                    <div className="w-12 h-[1px] bg-gray-600"></div>
-                    <div className={`flex items-center space-x-2 ${step === 2 ? 'text-ublCyan' : 'text-gray-500'}`}>
-                        <span className="text-2xl font-black">02</span>
-                        <span className="text-xs font-bold uppercase tracking-wider hidden md:inline">Payment & Confirm</span>
-                    </div>
+            <div className="flex flex-col items-center mb-10">
+                <img src={LOGO_URL} alt="Logo" className="w-20 h-20 mb-4 cursor-pointer" onClick={() => setShowWelcome(true)} />
+                <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase text-center">
+                    {step === 1 ? 'Player Details' : 'Payment & Stats'}
+                </h2>
+                <div className="flex space-x-4 mt-6">
+                    <div className={`h-1.5 w-16 rounded-full transition-all duration-500 ${step === 1 ? 'bg-ublCyan shadow-[0_0_10px_rgba(34,211,238,0.8)]' : 'bg-gray-700'}`}></div>
+                    <div className={`h-1.5 w-16 rounded-full transition-all duration-500 ${step === 2 ? 'bg-ublCyan shadow-[0_0_10px_rgba(34,211,238,0.8)]' : 'bg-gray-700'}`}></div>
                 </div>
             </div>
 
-            <form onSubmit={step === 2 ? handleSubmit(onStep2Submit) : (e) => e.preventDefault()} className="space-y-10">
-                
-                {/* Error Banner */}
+            <form onSubmit={step === 2 ? handleSubmit(onStep2Submit) : (e) => e.preventDefault()} className="space-y-8">
                 {submitStatus === 'error' && (
-                <div className="bg-red-500/10 border-l-4 border-red-500 text-red-200 p-4 rounded text-center animate-shake">
-                    <span className="font-bold mr-2">ERROR:</span> {submitMessage}
-                </div>
+                    <div className="bg-red-500/20 border border-red-500/50 p-4 rounded-xl text-red-200 font-bold text-center animate-shake">
+                        {submitMessage}
+                    </div>
                 )}
 
-                {/* STEP 1: Personal Info */}
                 {step === 1 && (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    
-                    {/* Name */}
-                    <div className="md:col-span-2 group">
-                    <label className="block text-xs font-black text-ublCyan uppercase mb-2 tracking-widest pl-1">Full Name <span className="text-red-500">*</span></label>
-                    <input 
-                        {...register("name", { required: "Name is required", minLength: { value: 2, message: "Min 2 chars" } })}
-                        className="w-full bg-slate-900/80 border border-gray-700 focus:border-ublCyan focus:bg-black focus:shadow-[0_0_20px_rgba(6,182,212,0.2)] rounded-xl px-6 py-5 text-white text-xl font-bold placeholder-gray-700 outline-none transition-all"
-                        placeholder="ENTER PLAYER NAME"
-                    />
-                    {errors.name && <p className="text-red-400 text-xs mt-2 font-bold ml-1">{errors.name.message}</p>}
-                    </div>
-
-                    {/* Mobile */}
-                    <div>
-                    <label className="block text-xs font-black text-ublCyan uppercase mb-2 tracking-widest pl-1">Mobile No. <span className="text-red-500">*</span></label>
-                    <input 
-                        type="tel"
-                        {...register("mobile", { 
-                            required: "Mobile is required", 
-                            pattern: { value: /^[6-9]\d{9}$/, message: "Valid 10-digit number (starts 6-9)" } 
-                        })}
-                        className="w-full bg-slate-900/80 border border-gray-700 focus:border-ublCyan focus:bg-black rounded-xl px-6 py-4 text-white outline-none transition-all font-mono"
-                        placeholder="9876543210"
-                        maxLength={10}
-                    />
-                    {errors.mobile && <p className="text-red-400 text-xs mt-2 font-bold ml-1">{errors.mobile.message}</p>}
-                    </div>
-
-                    {/* Email */}
-                    <div>
-                    <label className="block text-xs font-black text-ublCyan uppercase mb-2 tracking-widest pl-1">Email</label>
-                    <input 
-                        type="email"
-                        {...register("email", { 
-                            pattern: { 
-                                value: /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/, 
-                                message: "Invalid email format" 
-                            } 
-                        })}
-                        className="w-full bg-slate-900/80 border border-gray-700 focus:border-ublCyan focus:bg-black rounded-xl px-6 py-4 text-white outline-none transition-all"
-                        placeholder="PLAYER@EMAIL.COM"
-                    />
-                    {errors.email && <p className="text-red-400 text-xs mt-2 font-bold ml-1">{errors.email.message}</p>}
-                    </div>
-
-                    {/* DOB & Age Row */}
-                    <div className="flex space-x-4">
-                        <div className="flex-1">
-                            <label className="block text-xs font-black text-ublCyan uppercase mb-2 tracking-widest pl-1">Date of Birth <span className="text-red-500">*</span></label>
-                            <input 
-                                type="date"
-                                {...register("dob", { required: "Required" })}
-                                className="w-full bg-slate-900/80 border border-gray-700 focus:border-ublCyan focus:bg-black rounded-xl px-6 py-4 text-white outline-none transition-all [color-scheme:dark]"
-                            />
-                            {errors.dob && <p className="text-red-400 text-xs mt-2 font-bold ml-1">{errors.dob.message}</p>}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4">
+                        <div className="md:col-span-2">
+                            <label className="text-ublCyan text-xs font-black uppercase mb-2 block tracking-widest">Full Name *</label>
+                            <input {...register("name", { required: "Full Name is required" })} className="w-full bg-black/40 border border-gray-700 rounded-xl px-4 py-4 text-white focus:border-ublCyan outline-none transition-all" placeholder="ENTER PLAYER FULL NAME" />
+                            {errors.name && <p className="text-red-400 text-[10px] mt-1 font-bold">{errors.name.message}</p>}
                         </div>
-                        <div className="w-28">
-                            <label className="block text-xs font-black text-gray-500 uppercase mb-2 tracking-widest text-center">Age</label>
+                        
+                        <div>
+                            <label className="text-ublCyan text-xs font-black uppercase mb-2 block tracking-widest">Mobile Number *</label>
+                            <input type="tel" {...register("mobile", { required: "Mobile number is required", pattern: { value: /^[6-9]\d{9}$/, message: "Valid 10-digit number required" } })} className="w-full bg-black/40 border border-gray-700 rounded-xl px-4 py-4 text-white outline-none focus:border-ublCyan transition-all" placeholder="10-DIGIT MOBILE" maxLength={10} />
+                            {errors.mobile && <p className="text-red-400 text-[10px] mt-1 font-bold">{errors.mobile.message}</p>}
+                        </div>
+
+                        <div>
+                            <label className="text-ublCyan text-xs font-black uppercase mb-2 block tracking-widest">Email (Optional)</label>
+                            <input type="email" {...register("email")} className="w-full bg-black/40 border border-gray-700 rounded-xl px-4 py-4 text-white outline-none focus:border-ublCyan transition-all" placeholder="EMAIL@EXAMPLE.COM" />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-ublCyan text-xs font-black uppercase mb-2 block tracking-widest">Date of Birth *</label>
+                                <input type="date" {...register("dob", { required: "DOB is required" })} className="w-full bg-black/40 border border-gray-700 rounded-xl px-4 py-4 text-white outline-none focus:border-ublCyan transition-all [color-scheme:dark]" />
+                            </div>
                             <div className="relative">
-                                <input 
-                                    type="number"
-                                    readOnly
-                                    {...register("age", { required: true, min: 1 })}
-                                    className="w-full bg-black border-2 border-gray-800 text-ublCyan text-2xl font-black rounded-xl px-2 py-4 outline-none text-center"
-                                />
+                                <label className="text-ublCyan text-xs font-black uppercase mb-2 block tracking-widest">Calculated Age</label>
+                                <input type="number" {...register("age")} readOnly className="w-full bg-black/60 border border-gray-800 rounded-xl px-4 py-4 text-ublCyan font-black text-xl outline-none" placeholder="0" />
+                                <div className="absolute right-4 bottom-4 text-[10px] font-bold text-gray-600 uppercase">Yrs</div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Adhar */}
-                    <div>
-                    <label className="block text-xs font-black text-ublCyan uppercase mb-2 tracking-widest pl-1">Adhar Number</label>
-                    <input 
-                        {...register("adhar", { 
-                            validate: (value) => !value || /^\d{12}$/.test(value) || "Must be exactly 12 digits"
-                        })}
-                        className="w-full bg-slate-900/80 border border-gray-700 focus:border-ublCyan focus:bg-black rounded-xl px-6 py-4 text-white outline-none transition-all tracking-widest font-mono"
-                        placeholder="XXXX XXXX XXXX"
-                        maxLength={12}
-                    />
-                    {errors.adhar && <p className="text-red-400 text-xs mt-2 font-bold ml-1">{errors.adhar.message}</p>}
-                    </div>
-
-                    {/* Category Grid - Improved UI */}
-                    <div className="md:col-span-2">
-                    <label className="block text-xs font-black text-ublCyan uppercase mb-4 tracking-widest pl-1">Select Age Category <span className="text-red-500">*</span></label>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {CATEGORIES.map(cat => (
-                            <label 
-                                key={cat} 
-                                className={`
-                                    relative cursor-pointer group overflow-hidden rounded-xl border-2 transition-all duration-300
-                                    ${selectedCategory === cat 
-                                        ? 'bg-ublCyan text-black border-ublCyan shadow-[0_0_20px_rgba(34,211,238,0.5)] scale-105 z-10' 
-                                        : 'bg-slate-900/50 border-gray-700 text-gray-400 hover:border-ublCyan hover:text-white hover:bg-black'
-                                    }
-                                `}
-                            >
-                                <input 
-                                    type="radio" 
-                                    value={cat}
-                                    {...register("category", { required: "Please select a category" })}
-                                    className="peer sr-only"
-                                />
-                                <div className="p-6 text-center flex flex-col items-center justify-center h-full">
-                                    <span className="block text-3xl font-black italic tracking-tighter mb-1">
-                                        {cat}
-                                    </span>
-                                    <span className="text-[10px] uppercase tracking-[0.2em] font-bold">YEARS</span>
-                                </div>
-                                {/* Shine effect */}
-                                {selectedCategory === cat && (
-                                    <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/30 to-white/0 skew-x-12 animate-shine pointer-events-none"></div>
-                                )}
-                            </label>
-                        ))}
-                    </div>
-                    {errors.category && <p className="text-red-400 text-xs mt-2 font-bold text-center uppercase">{errors.category.message}</p>}
-                    </div>
-
-                    {/* Valid Document Upload - NEW */}
-                    <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-ublCyan uppercase mb-2 tracking-widest pl-1">Valid ID Proof (Aadhar/DL/Passport) <span className="text-red-500">*</span></label>
-                        <div className="bg-slate-900/50 border border-gray-700 rounded-xl p-4 flex items-center gap-4">
-                            <input 
-                                type="file" 
-                                accept="image/png, image/jpeg, image/jpg, application/pdf"
-                                {...register("validDocumentFiles", { required: "ID Proof is required" })}
-                                className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:uppercase file:bg-gray-800 file:text-white hover:file:bg-ublCyan hover:file:text-black transition-all cursor-pointer"
-                            />
+                        <div>
+                            <label className="text-ublCyan text-xs font-black uppercase mb-2 block tracking-widest">Aadhar Number (Optional)</label>
+                            <input {...register("adhar", { pattern: { value: /^\d{12}$/, message: "Must be 12 numeric digits" } })} className="w-full bg-black/40 border border-gray-700 rounded-xl px-4 py-4 text-white outline-none focus:border-ublCyan transition-all font-mono tracking-widest" placeholder="12-DIGIT AADHAR" maxLength={12} />
+                            {errors.adhar && <p className="text-red-400 text-[10px] mt-1 font-bold">{errors.adhar.message}</p>}
                         </div>
-                        {errors.validDocumentFiles && <p className="text-red-400 text-xs mt-2 font-bold ml-1">{errors.validDocumentFiles.message}</p>}
-                    </div>
 
-                    {/* Player Image */}
-                    <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-ublCyan uppercase mb-2 tracking-widest pl-1">Player Photo <span className="text-red-500">*</span></label>
-                        <div className="relative border-2 border-dashed border-gray-600 rounded-2xl p-8 hover:border-ublCyan hover:bg-ublCyan/5 transition-all bg-black/40 group cursor-pointer flex flex-col items-center justify-center">
-                            <input 
-                                type="file" 
-                                accept="image/png, image/jpeg, image/jpg"
-                                {...register("playerImageFiles", { required: "Photo is required" })}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-                            />
-                            
-                            <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-[0_0_20px_rgba(0,0,0,0.5)] border border-gray-700 group-hover:border-ublCyan">
-                                <svg className="h-10 w-10 text-ublCyan" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
+                        <div className="md:col-span-2">
+                            <label className="text-ublCyan text-xs font-black uppercase mb-2 block tracking-widest">League Category *</label>
+                            <select {...register("category", { required: "Please select a category" })} className="w-full bg-black/40 border border-gray-700 rounded-xl px-4 py-4 text-white outline-none focus:border-ublCyan transition-all">
+                                <option value="">SELECT AGE GROUP</option>
+                                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                            {errors.category && <p className="text-red-400 text-[10px] mt-1 font-bold">{errors.category.message}</p>}
+                        </div>
+
+                        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="p-5 bg-black/30 border border-gray-800 rounded-2xl group hover:border-ublCyan transition-colors">
+                                <label className="text-ublCyan text-xs font-black uppercase mb-3 block tracking-widest">Identity Proof Doc *</label>
+                                <input type="file" {...register("validDocumentFiles", { required: "Required" })} className="text-xs text-gray-500 file:bg-slate-800 file:text-white file:border-0 file:py-2 file:px-4 file:rounded-full file:cursor-pointer hover:file:bg-ublCyan hover:file:text-black transition-all" />
+                                <p className="text-[10px] text-gray-500 mt-2 italic font-medium">Aadhar/Passport/DL (PDF or Image)</p>
+                                {errors.validDocumentFiles && <p className="text-red-400 text-[10px] mt-1 font-bold">Document is mandatory</p>}
                             </div>
-                            
-                            {watch("playerImageFiles")?.[0] ? (
-                                <div className="text-center">
-                                    <p className="text-ublCyan font-bold text-lg">Photo Selected!</p>
-                                    <p className="text-sm text-gray-400 mt-1">{watch("playerImageFiles")[0].name}</p>
-                                </div>
-                            ) : (
-                                <div className="text-center">
-                                    <p className="text-sm font-bold text-white uppercase tracking-wider mb-1">Click to Upload</p>
-                                    <p className="text-xs text-gray-500">JPG or PNG (Max 5MB)</p>
-                                </div>
-                            )}
+                            <div className="p-5 bg-black/30 border border-gray-800 rounded-2xl group hover:border-ublCyan transition-colors">
+                                <label className="text-ublCyan text-xs font-black uppercase mb-3 block tracking-widest">Passport Size Photo *</label>
+                                <input type="file" {...register("playerImageFiles", { required: "Required" })} className="text-xs text-gray-500 file:bg-slate-800 file:text-white file:border-0 file:py-2 file:px-4 file:rounded-full file:cursor-pointer hover:file:bg-ublCyan hover:file:text-black transition-all" />
+                                <p className="text-[10px] text-gray-500 mt-2 italic font-medium">Clear portrait for player profile</p>
+                                {errors.playerImageFiles && <p className="text-red-400 text-[10px] mt-1 font-bold">Photo is mandatory</p>}
+                            </div>
                         </div>
-                        {errors.playerImageFiles && <p className="text-red-400 text-xs mt-2 font-bold ml-1">{errors.playerImageFiles.message}</p>}
+
+                        <div className="md:col-span-2 pt-6">
+                            <button onClick={onStep1Submit} disabled={isSubmitting} className="w-full bg-ublCyan text-black font-black uppercase tracking-widest py-5 rounded-xl hover:bg-white hover:shadow-[0_0_25px_rgba(34,211,238,0.4)] transition-all transform active:scale-95 text-lg">
+                                {isSubmitting ? 'PROCESSING...' : 'CONTINUE TO PAYMENT'}
+                            </button>
+                        </div>
                     </div>
-
-                </div>
-
-                <div className="pt-8">
-                    <button 
-                        type="button"
-                        onClick={onStep1Submit}
-                        disabled={isSubmitting}
-                        className="w-full bg-gradient-to-r from-ublCyan to-blue-500 text-black font-black uppercase tracking-widest text-xl py-5 rounded-xl shadow-[0_0_30px_rgba(6,182,212,0.4)] hover:shadow-[0_0_50px_rgba(6,182,212,0.7)] hover:scale-[1.01] transform transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {isSubmitting ? 'PROCESSING...' : 'CONTINUE TO STEP 2'}
-                    </button>
-                </div>
-                </div>
                 )}
 
-                {/* STEP 2: Payment & Stats */}
                 {step === 2 && (
-                <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-700">
-                
-                {/* Playing Style */}
-                <div className="bg-slate-900/40 p-6 rounded-2xl border border-white/5">
-                    <label className="block text-xs font-black text-ublCyan uppercase mb-4 tracking-widest pl-1">Playing Style</label>
-                    <div className="flex flex-wrap gap-4">
-                        {['OFFENSIVE', 'DEFENSIVE', 'UNKNOWN'].map((style) => (
-                            <label key={style} className="flex-1 min-w-[120px] cursor-pointer group">
-                                <input 
-                                    type="radio" 
-                                    value={style}
-                                    {...register("playingStyle")}
-                                    className="peer sr-only"
-                                />
-                                <div className="bg-black/50 border border-gray-700 rounded-xl px-4 py-4 text-center transition-all peer-checked:bg-ublCyan peer-checked:text-black peer-checked:font-bold peer-checked:border-ublCyan hover:border-gray-500 h-full flex items-center justify-center">
-                                    <span className="text-sm font-bold tracking-wider">{style}</span>
-                                </div>
-                            </label>
-                        ))}
-                    </div>
-                </div>
-
-                    {/* Achievements */}
-                <div>
-                    <label className="block text-xs font-black text-ublCyan uppercase mb-2 tracking-widest pl-1">Achievements</label>
-                    <textarea 
-                        {...register("playerAchievement")}
-                        className="w-full bg-slate-900/80 border border-gray-700 focus:border-ublCyan focus:bg-black rounded-xl px-6 py-4 text-white outline-none h-32 text-lg"
-                        placeholder="State level winner, 3x Local Champion, etc..."
-                    />
-                </div>
-
-                    {/* Payment Section */}
-                    <div className="bg-gradient-to-br from-blue-900/40 to-slate-900/40 p-8 rounded-2xl border border-ublCyan/30 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-ublCyan/10 rounded-full blur-3xl pointer-events-none"></div>
-                        
-                        <h4 className="text-2xl font-black text-white uppercase italic mb-6 flex items-center">
-                            <span className="bg-ublCyan text-black text-xs px-2 py-1 mr-3 rounded-md font-bold not-italic">REQ</span>
-                            Payment Details
-                        </h4>
-                        
-                        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 bg-black/60 p-5 rounded-xl border border-white/10">
-                            <span className="text-gray-400 text-sm mb-2 md:mb-0">OFFICIAL UPI ID:</span>
-                            <span className="text-ublCyan font-mono font-bold text-2xl tracking-wider">ubl@upi</span>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 gap-6">
+                    <div className="space-y-8 animate-in fade-in slide-in-from-right-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                                <label className="block text-xs font-bold text-gray-300 uppercase mb-2">Transaction Ref / Barcode No. <span className="text-red-500">*</span></label>
-                                <input 
-                                    {...register("upiOrBarcode", { required: "Transaction ID is required" })}
-                                    className="w-full bg-black/50 border border-gray-600 focus:border-ublCyan rounded-xl px-4 py-4 text-white outline-none"
-                                    placeholder="e.g. UPI Ref Number"
-                                />
-                                {errors.upiOrBarcode && <p className="text-red-400 text-xs mt-2 font-bold ml-1">{errors.upiOrBarcode.message}</p>}
+                                <label className="text-ublCyan text-xs font-black uppercase mb-2 block tracking-widest">Playing Style</label>
+                                <select {...register("playingStyle")} className="w-full bg-black/40 border border-gray-700 rounded-xl px-4 py-4 text-white outline-none focus:border-ublCyan">
+                                    <option value="UNKNOWN">UNKNOWN</option>
+                                    <option value="OFFENSIVE">OFFENSIVE</option>
+                                    <option value="DEFENSIVE">DEFENSIVE</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-ublCyan text-xs font-black uppercase mb-2 block tracking-widest">Key Achievements</label>
+                                <input {...register("playerAchievement")} className="w-full bg-black/40 border border-gray-700 rounded-xl px-4 py-4 text-white outline-none focus:border-ublCyan" placeholder="E.G. DISTRICT CHAMPION" />
+                            </div>
+                        </div>
+
+                        {/* Payment Card */}
+                        <div className="bg-slate-800/40 p-8 rounded-3xl border border-ublCyan/20 shadow-xl overflow-hidden relative">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-ublCyan/5 blur-3xl pointer-events-none"></div>
+                            <div className="flex items-center justify-between mb-8">
+                                <h3 className="text-white font-black italic uppercase text-xl flex items-center">
+                                    <span className="w-2 h-6 bg-ublCyan mr-3 rounded-full"></span>
+                                    Scan to Pay
+                                </h3>
+                                <span className="bg-ublCyan/10 text-ublCyan px-3 py-1 rounded-full text-[10px] font-black uppercase border border-ublCyan/20">Official UBL Portal</span>
                             </div>
                             
-                            {/* Payment Screenshot */}
-                            <div>
-                                <label className="block text-xs font-bold text-gray-300 uppercase mb-2">Upload Screenshot <span className="text-red-500">*</span></label>
-                                <input 
-                                    type="file" 
-                                    accept="image/png, image/jpeg, image/jpg, application/pdf"
-                                    {...register("paymentScreenshotFiles", { required: "Payment screenshot is required" })}
-                                    className="w-full text-sm text-gray-400 file:mr-4 file:py-3 file:px-6 file:rounded-full file:border-0 file:text-xs file:font-black file:uppercase file:bg-ublCyan file:text-black hover:file:bg-white transition-colors cursor-pointer"
-                                />
-                                {errors.paymentScreenshotFiles && <p className="text-red-400 text-xs mt-2 font-bold ml-1">{errors.paymentScreenshotFiles.message}</p>}
+                            <div className="flex flex-col lg:flex-row items-center gap-10">
+                                <div className="bg-white p-4 rounded-2xl shrink-0 shadow-[0_0_20px_rgba(255,255,255,0.05)]">
+                                    <img src={QR_URL} alt="Payment QR" className="w-44 h-44 object-contain" />
+                                </div>
+                                
+                                <div className="flex-1 w-full space-y-6">
+                                    <div className="bg-black/40 p-5 rounded-2xl border border-white/5 relative group">
+                                        <div className="absolute top-0 right-0 p-2">
+                                            <button 
+                                                type="button" 
+                                                onClick={copyUpi}
+                                                className={`text-[10px] font-bold px-3 py-1 rounded-full transition-all ${copied ? 'bg-green-500 text-white' : 'bg-ublCyan text-black hover:bg-white'}`}
+                                            >
+                                                {copied ? 'COPIED!' : 'COPY ID'}
+                                            </button>
+                                        </div>
+                                        <p className="text-gray-500 text-[10px] uppercase font-bold mb-1 tracking-widest">OFFICIAL UPI ID</p>
+                                        <p className="text-ublCyan font-mono text-xl md:text-2xl font-black tracking-widest truncate pr-16">{OFFICIAL_UPI}</p>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 gap-6">
+                                        <div>
+                                            <label className="text-gray-400 text-[10px] font-black uppercase mb-2 block tracking-widest">Transaction ID / Ref *</label>
+                                            <input {...register("upiOrBarcode", { required: "Transaction ID is mandatory", pattern: { value: /^[A-Za-z0-9]{8,20}$/, message: "Enter a valid 8-20 character ID" } })} className="w-full bg-black/40 border border-gray-700 rounded-xl px-4 py-4 text-white outline-none focus:border-ublCyan text-lg font-mono tracking-widest uppercase" placeholder="ENTER REF NUMBER" maxLength={20} />
+                                            {errors.upiOrBarcode && <p className="text-red-400 text-[10px] mt-1 font-bold">{errors.upiOrBarcode.message}</p>}
+                                        </div>
+                                        <div>
+                                            <label className="text-gray-400 text-[10px] font-black uppercase mb-2 block tracking-widest">Payment Screenshot *</label>
+                                            <input type="file" {...register("paymentScreenshotFiles", { required: "Screenshot is mandatory" })} className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-black file:bg-ublCyan file:text-black hover:file:bg-white transition-all cursor-pointer" />
+                                            {errors.paymentScreenshotFiles && <p className="text-red-400 text-[10px] mt-1 font-bold">Screenshot is required</p>}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Remarks */}
-                    <div>
-                    <label className="block text-xs font-black text-ublCyan uppercase mb-2 tracking-widest pl-1">Remarks</label>
-                    <input 
-                        {...register("remark")}
-                        className="w-full bg-slate-900/80 border border-gray-700 focus:border-ublCyan rounded-xl px-6 py-4 text-white outline-none"
-                        placeholder="Any additional notes..."
-                    />
-                </div>
-
-                {/* Actions */}
-                    <div className="pt-4">
-                        <button 
-                            disabled={isSubmitting}
-                            type="submit"
-                            className="w-full bg-gradient-to-r from-ublCyan to-blue-500 text-black font-black uppercase tracking-widest text-lg py-5 rounded-xl shadow-[0_0_30px_rgba(6,182,212,0.4)] hover:shadow-[0_0_50px_rgba(6,182,212,0.7)] hover:-translate-y-1 transition-all disabled:opacity-50"
-                        >
-                            {isSubmitting ? `UPLOADING ${uploadProgress}%` : 'COMPLETE REGISTRATION'}
+                        <button type="submit" disabled={isSubmitting} className="w-full bg-gradient-to-r from-ublCyan to-blue-600 text-black font-black uppercase tracking-widest py-6 rounded-2xl hover:shadow-[0_0_40px_rgba(34,211,238,0.5)] transition-all transform active:scale-95 text-xl">
+                            {isSubmitting ? `UPLOADING ${uploadProgress}%` : 'SUBMIT REGISTRATION'}
                         </button>
                     </div>
-                </div>
                 )}
-                
-                <p className="text-center text-[10px] text-gray-500 mt-6 uppercase tracking-widest">
-                    By registering, you agree to the United Badminton League terms.
-                </p>
-
             </form>
-            </div>
         </div>
       </div>
     </div>
