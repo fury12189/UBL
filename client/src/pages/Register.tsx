@@ -34,6 +34,7 @@ const Register: React.FC = () => {
   const [showWelcome, setShowWelcome] = useState(true);
   const [step, setStep] = useState<1 | 2>(1);
   const [registeredPlayerId, setRegisteredPlayerId] = useState<string | null>(null);
+  const [uploadedPlayerImage, setUploadedPlayerImage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [submitMessage, setSubmitMessage] = useState('');
@@ -108,6 +109,7 @@ const Register: React.FC = () => {
             uploadFile(data.validDocumentFiles[0])
         ]);
 
+        setUploadedPlayerImage(playerImageUrl);
         setUploadProgress(50);
 
         const payload = {
@@ -176,10 +178,47 @@ const Register: React.FC = () => {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center bg-ublDark relative overflow-hidden">
         <div className="absolute inset-0 bg-cover bg-center opacity-20" style={{ backgroundImage: `url(${BG_URL})` }}></div>
-        <div className="z-10 animate-in zoom-in duration-500 flex flex-col items-center">
-            <img src={LOGO_URL} alt="Logo" className="w-32 h-32 mb-8 drop-shadow-[0_0_15px_rgba(34,211,238,1)]" />
-            <h2 className="text-5xl md:text-6xl font-black text-white mb-4 italic tracking-tighter uppercase">SUCCESSFULLY REGISTERED</h2>
-            <p className="text-ublCyan font-bold text-xl md:text-2xl mb-12 tracking-widest max-w-lg">{submitMessage}</p>
+        <div className="z-10 animate-in zoom-in duration-500 flex flex-col items-center w-full max-w-3xl">
+            <img src={LOGO_URL} alt="Logo" className="w-24 h-24 mb-6 drop-shadow-[0_0_15px_rgba(34,211,238,1)]" />
+            <h2 className="text-4xl md:text-5xl font-black text-white mb-2 italic tracking-tighter uppercase">SUCCESSFULLY REGISTERED</h2>
+            <p className="text-ublCyan font-bold text-lg md:text-xl mb-8 tracking-widest">{submitMessage}</p>
+
+            <div className="bg-black/60 backdrop-blur-md p-8 rounded-3xl border border-yellow-500/30 shadow-[0_0_30px_rgba(234,179,8,0.1)] mb-10 w-full">
+                <h3 className="text-yellow-400 font-black text-xl uppercase italic mb-6 text-center tracking-wider border-b border-yellow-500/20 pb-4">
+                    Player Benefits & Roadmap
+                </h3>
+                <div className="flex flex-col md:flex-row items-center gap-8">
+                    <ul className="space-y-4 flex-1 text-left">
+                        {[
+                            "PLAYER GOES IN TO LIVE AUCTION",
+                            "TRAINING CAMP UNDER FRANCHISE",
+                            "PROVIDE PLAYER KIT",
+                            "DURING MATCHES PLAYERS GET MAN OF MATCH",
+                            "DURING & AFTER MATCH PROVIDES SNACKS OR DINNER"
+                        ].map((point, i) => (
+                            <li key={i} className="flex items-start text-gray-200 font-bold uppercase text-sm md:text-base tracking-wide">
+                                <span className="text-yellow-400 mr-3 text-xl">•</span>
+                                {point}
+                            </li>
+                        ))}
+                    </ul>
+                    
+                    {uploadedPlayerImage && (
+                        <div className="flex flex-col items-center shrink-0">
+                             <div className="relative group w-32 h-32 md:w-40 md:h-40">
+                                <div className="absolute -inset-1 bg-gradient-to-r from-ublCyan to-blue-600 rounded-full blur opacity-75 animate-pulse-slow"></div>
+                                <img 
+                                    src={uploadedPlayerImage} 
+                                    alt="Player" 
+                                    className="relative w-full h-full object-cover rounded-full border-4 border-black shadow-2xl"
+                                />
+                            </div>
+                            <span className="mt-3 text-xs font-black text-ublCyan uppercase tracking-widest">Player Card</span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
             <button onClick={() => window.location.reload()} className="px-12 py-5 bg-ublCyan text-black font-black uppercase tracking-widest rounded-full hover:bg-white hover:shadow-[0_0_40px_rgba(34,211,238,1)] transition-all">
                 Register New Player
             </button>
